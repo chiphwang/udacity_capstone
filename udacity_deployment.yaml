@@ -1,0 +1,30 @@
+---
+kind: Deployment
+apiVersion: extensions/v1beta1
+metadata:
+  name: udacitycapstone
+  namespace: default
+  labels:
+    app: udcaitycpatsone
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: udcaitycpatsone
+  template:
+    metadata:
+      labels:
+        app: udcaitycpatsone
+    spec:
+      containers:
+      - image: "chiphwang/udcaitycpatsone:latest"
+        name: udcaitycapstone
+        ports:
+        - containerPort: 80
+        readinessProbe:
+          httpGet:
+             path: /
+             port: 80
+             initialDelaySeconds: 5
+             periodSeconds: 5
+             successThreshold: 1
