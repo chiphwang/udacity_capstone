@@ -1,0 +1,156 @@
+Description: >
+    Chip Hwang 
+
+Parameters:
+
+    EnvironmentName:
+        Description: An Environment name that will be prefixed to resources
+        Type: String
+
+    SSHKey:
+      Description: SSH Key for Instances
+      Type: String
+      Default: fossa_key
+
+
+Resources:
+
+    BastionSecGroup:
+        Type: AWS::EC2::SecurityGroup
+        Properties:
+            GroupDescription: Allow HTTP from and to our server & SSH in our server
+            VpcId:
+              Fn::ImportValue:
+                !Sub "${EnvironmentName}-VPCID"
+            SecurityGroupIngress:
+            - IpProtocol: tcp
+              FromPort: 22
+              ToPort: 22
+              CidrIp: 0.0.0.0/0
+            SecurityGroupEgress:
+            - IpProtocol: tcp
+              FromPort: 0
+              ToPort: 65535
+              CidrIp: 0.0.0.0/0
+            Tags: 
+            - Key: Name 
+              Value: !Sub ${EnvironmentName} Bastion Servers 
+
+    KubeServerSecGroup:
+        Type: AWS::EC2::SecurityGroup
+        Properties:
+            GroupDescription: Allow HTTP from and to our server & SSH in our server
+            VpcId:
+              Fn::ImportValue:
+                !Sub "${EnvironmentName}-VPCID"
+            SecurityGroupIngress:
+            - IpProtocol: tcp
+              FromPort: 8080
+              ToPort: 8080
+              CidrIp: 0.0.0.0/0
+            - IpProtocol: tcp
+              FromPort: 80
+              ToPort: 80
+              CidrIp: 0.0.0.0/0
+            - IpProtocol: tcp
+              FromPort: 22
+              ToPort: 22
+              CidrIp: 0.0.0.0/0
+            - IpProtocol: tcp
+              FromPort: 443
+              ToPort: 443  
+            SecurityGroupEgress:
+            - IpProtocol: tcp
+              FromPort: 0
+              ToPort: 65535
+              CidrIp: 0.0.0.0/0
+            Tags: 
+            - Key: Name 
+              Value: !Sub ${EnvironmentName} SecurityGroup Servers 
+
+    WebAppLaunchConfig:
+        Type: AWS::AutoScaling::LaunchConfiguration
+        Properties:
+          UserData:
+            Fn::Base64: !Sub |
+              #!/bin/bash
+              sudo  apt-get update -y
+              sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
+              sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
+              sudo curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add  -
+              cat <<EOF >/etc/apt/sources.list.d/kubernetes.list
+              deb https://apt.kubernetes.io/ kubernetes-xenial main
+              EOF
+              sudo apt-get update
+              sudo apt-get install -y docker-ce=18.06.1~ce~3-0~ubuntu kubelet=1.13.5-00 kubeadm=1.13.5-00 kubectl=1.13.5-00
+              sudo apt-mark hold docker-ce kubelet kubeadm kubectl
+              echo "net.bridge.bridge-nf-call-iptables=1" | sudo tee -a /etc/sysctl.conf
+              sudo sysctl -p
+              sudo kubeadm init --pod-network-cidr=10.244.0.0/16
+              sudo mkdir -p $HOME/.kube
+              sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+              sudo chown $(id -u):$(id -g) $HOME/.kube/config
+              kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/bc79dd1505b0c8681ece4de4c0d86c5cd2643275/Documentation/kube-flannel.yml
+              kubectl taint nodes --all node-role.kubernetes.io/master-
+          ImageId: ami-005bdb005fb00e791
+          SecurityGroups:
+          - Ref: KubeServerSecGroup
+          InstanceType: t3.medium
+          KeyName: !Sub ${SSHKey}
+          BlockDeviceMappings:
+          - DeviceName: "/dev/sdk"
+            Ebs:
+              VolumeSize: '100'
+
+
+    
+    BastionLaunchConfig:
+        Type: AWS::AutoScaling::LaunchConfiguration
+        Properties:
+          UserData:
+            Fn::Base64: !Sub |
+              #!/bin/bash
+              apt-get update -y
+          ImageId: ami-005bdb005fb00e791
+          SecurityGroups:
+          - Ref: BastionSecGroup
+          InstanceType: t2.micro
+          KeyName: !Sub ${SSHKey}
+          BlockDeviceMappings:
+          - DeviceName: "/dev/sdk"
+            Ebs:
+              VolumeSize: '10'
+
+    BastionAppGroup:
+        Type: AWS::AutoScaling::AutoScalingGroup
+        Properties:
+          VPCZoneIdentifier:
+          - Fn::ImportValue:
+              !Sub "${EnvironmentName}-PUB-NETS"
+          LaunchConfigurationName: 
+            Ref: BastionLaunchConfig
+          MinSize: '1'
+          MaxSize: '1'
+          
+
+
+    
+    WebAppGroup:
+        Type: AWS::AutoScaling::AutoScalingGroup
+        Properties:
+          VPCZoneIdentifier:
+          - Fn::ImportValue:
+              !Sub "${EnvironmentName}-PUB-NETS"
+          LaunchConfigurationName: 
+            Ref: WebAppLaunchConfig
+          MinSize: '1'
+          MaxSize: '1'
+          
+
+
+
+
+
+
+
+
