@@ -9,11 +9,10 @@ node {
 	
 	
    stage('Lint Check') {
-		steps {
+		 
 			sh 'tidy -q -e *.html'
-		}
+		
 	}
-
 
 	stage('Building image') {
         docker.withRegistry( 'https://' + registry, registryCredential ) {
@@ -33,7 +32,7 @@ node {
     }
     
     stage('update Kuberntes Image') {
-        sh "kubectl set image deployment/udacitycapstone udacity=chiphwang/udacitycapstone:$BUILD_NUMBER"
+        sh "kubectl  --insecure-skip-tls-verify set image deployment/udacitycapstone udacitycapstone=chiphwang/udacitycapstone:$BUILD_NUMBER"
    }
 
 }
